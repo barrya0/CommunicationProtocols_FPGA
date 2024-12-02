@@ -1,0 +1,105 @@
+Implementing the RS-232 Serial Interface on Artix-7 FPGA
+
+Using a serial interface allows for simple communication from an FPGA to a PC.
+-----------------
+Async Transmitter
+-> Creates a signal -- TxD -- by serializing the data for transmit
+-----------------
+The RS-232 interface
+-> 9-pins
+-> full-duplex communication: PC can send and recieve data at the same time
+-> Communicates at a maximum speed of around 10KBytes/s
+
+On a DB-9 connector the 3 important pins are
+-> pin 2: RxD (recieve data)
+-> pin 3: TxD (transmit data)
+-> GND
+
+Data serialized starting from LSB->MSB;
+-> so byte 0x55 or 01010101 is sent :-> 10101010
+
+Since RS-232 is an asynchronous protocol, there is no clock signal that is transmitted along with the data
+-> Therefore, the reciever must have a way to time each byte coming in.
+Which happens like so:
+	1. Before communication begins, data characteristics such as speed and format must be the same on both sides.
+		-> this is usually done manually before communication starts
+	2. Transmitter sends idle (1)
+	3. Transmitter sends start (0) before each byte begins transmitting
+		-> This way the reciever knows a byte is incoming
+	4. Byte is sent
+	5. Transmitter sends stop (1) after each byte
+
+In an example transmission of byte 0xC4 or 11000100, from the waveform alone, the byte is harder to 'see'
+-> this shows how important it is for the reciever to know when a bit begins and when it ends, i.e the speed
+-> of incoming data
+
+The speed at which data can be sent is called the baud rate
+-> how many bits-per-second can be sent.
+-> 1000 bauds ~ 1000 b/s ~ each bit lasts 1 ms
+-> 115200 bauds ~ 11.5K byte/sec
+-> The time it takes for the start and stop bits must also be considered.
+
+From a physical standpoint:
+-> Start and Stop bits (1) are sent using low voltage (-10V OR [-5V :: -15V])
+-> (0) are sent using high voltage (+10V OR [5V :: 15V])
+
+-----------------
+Async Reciever
+-> Takes signal from outside of the FPGA -- RxD -- and "de-serializes" the signal for use internally.
+-----------------
+
+Module assembles bitwise data coming in from 'RxD' line as it comes.
+->  As a byte is being received, it appears on the 'data' bus coming out.
+->  Data_ready asserted when a complete byte has been recieved
+->  Data is only valid when data_ready is asserted
+	-> This way, we prevent consumer from getting partial or incorrect data
+	-> Ensures data integrity and synchronizes communication between receiver and the "data consumer"
+	-> Handles potential timing variations in serial communication
+
+Now on the topic of Oversampling!
+	-> Problem to solve: 
+		-> Asynchronous receiver's have to be in-sync with the incoming signal as it doesn't normally have access to the clock used by the transmitter.
+		-> To remedy this, we use oversampling to find the next "start" bit and determine when a new data byte is coming.
+	-> Technique:
+		-> Sample incoming serial line MULTIPLE times per bit period
+		-> This helps detect the start bit and determine it's precise center
+		-> And compensates for small clock frequency differences
+	-> Example Scenario:
+		-> Baud Rate: 115200 bits/sec
+		-> Oversampling Rate: 8x
+		-> Actual Sampling Frequency: 921600 Hz
+		-> Sampling Process:
+			-> Bit Period: ~8.68 microseconds
+			-> Sampling Intervals: 8 samples per bit in other words, each bit has 8 sample points
+			-> Each sample is ~1.09 microseconds apart
+		-> Strategy:
+			-> Start Bit Detection:
+				1. Continuously sample line at 8x baud rate
+				2. Look for transitions from high(idle) to low(start bit)
+				3. Once detected, wait for middle samples to confirm
+				4. Avoid false triggers from noise
+			-> Bit sampling:
+				1. After start bit is confirmed, we can sample at precise intervals
+				2. Take the majority/center of the samples to determine the actual bit value
+		-> Visual Representation:
+			-> For an expected '0' bit
+				(the unexpected account for noise in the transmission)
+				Sample Points : [00011000]
+				Majority Vote : [0]
+			-> Bit Sequence : '0 1 0 1'
+				Sample Grid:
+				BIT 0: [00011000] -> Decode as 0
+				BIT 1: [11001110] -> Decode as 1
+				BIT 0: [00110001] -> Decode as 0
+				BIT 1: [11001101] -> Decode as 1
+				Final Decoded Sequence : '0101' (YAY)
+Digital Noise Filtering
+	-> Purpose :
+		-> Reject very short electrical noise spikes =
+		-> Ensure a signal is consistently high or low before being considered a valid state
+		-> Prevents false start bit detection
+	-> Implementation :
+		-> RxD_cntr: a 2-bit counter that tracks signal stability
+		-> Can range from 0-3
+		-> Increments when a signal is consistently high
+		-> Decrements when a signal is consistently low
