@@ -93,9 +93,21 @@ Now on the topic of Oversampling!
 				BIT 0: [00110001] -> Decode as 0
 				BIT 1: [11001101] -> Decode as 1
 				Final Decoded Sequence : '0101' (YAY)
+	-> Adding some complexity...
+		-> How can we determine the best time to sample the signal?
+			-> Calculate the base-2 log of a number
+				1. This will determine the bit width needed to represent the oversampling rate
+					-> log2 of (8) == 3 as 2^3 = 8
+				2. Allows for bit sampling at its most stable point (typically the middle of the bit period)
+			-> Visualization:
+				Bit Period: 0 1 2 3 4 5 6 7
+							^     ^     ^
+							|     |     |
+							Start Mid  End
+				Sample occurs at middle tick to minimize noise and timing errors
 Digital Noise Filtering
 	-> Purpose :
-		-> Reject very short electrical noise spikes =
+		-> Reject very short electrical noise spikes
 		-> Ensure a signal is consistently high or low before being considered a valid state
 		-> Prevents false start bit detection
 	-> Implementation :
