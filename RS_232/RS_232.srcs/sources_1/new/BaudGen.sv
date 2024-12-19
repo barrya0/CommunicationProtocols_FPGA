@@ -28,32 +28,46 @@ To achieve a closely approximate baud rate of 115200
 -> overflows marking a valid instance of the 115200 baud rate.
 -> Therefore, the baud tick is the 11th bit of some accuracy register or variable that
 -> represents the carry-out.
+
+The following module follows this reasoning but with some mathematical improvements
+-> to improve accuracy and support an oversampling tick feature which functions simply as a scale factor without much changing the accumulator logic
 */
-module BaudGen #(parameter CLKFREQ = 25000000, baudRate = 115200,
-                accWidth = 16)
+module BaudGen #(parameter CLKFREQ = 25000000, baudRate = 115200, oversampling = 1)
     (
     input logic clk,
-    output logic baud
+    input logic enable,
+    output logic tick //generate baud tick at specified baud * oversampling Factor
     );
     /*
-    -> baudRate << (accWidth-4): shifts baudRate left accWidth-4 bits, effectively
-    ->-> multiplying by 2^(accWidth-4)
-    -> CLKFREQ >> 4 ~ CLKFREQ/16
-    -> CLKFREQ >> 5 ~ CLKFREQ/32
-    -> + and / ops fine-tune increment value
-    -> This creates a value when repeatedly added in a fixed-point accumulator,
-    -> will overflow at a rate relative to the desired baud.
-    -> (CLKFREQ >> 5) and (CLKFREQ >> 4) also minimize rounding errors
     */
-    localparam baudShift = baudRate << (accWidth-4);
-    localparam clkTerm = CLKFREQ >> 5;
-    localparam clkDiv = CLKFREQ >> 4;
-    localparam baudIncrementer = (baudShift+clkTerm) / clkDiv;
-
-    logic [accWidth:0] accumulator; //17 bit accumulator - last bit for carry out
-    always_ff @(posedge clk) begin
-        //Use the first 16 bits from the previous result but save full 17 bit result to track the overflow without changing it
-        accumulator <= accumulator[accWidth-1:0] + baudIncrementer;
+    //Logic to determine when is the best time to sample the RxD line
+    //Calculate base-2 log of number
+    //log2(8) = 3 (2^3=8)
+    function integer log2(input integer x); 
+    begin
+        log2 = 0;
+        while(x>>log2)  log2 = log2+1;
     end
-    assign baud = (accumulator[accWidth]); //accumulator carry out
+    endfunction
+    // +/- 2% timing error over a byte
+    // -> by adding extra bits for timing error tolerance
+    localparam accWidth = log2(CLKFREQ/baudRate)+8;
+    localparam baudShiftLimiter = log2(baudRate*oversampling >> (31-accWidth)); //makes sure incremented calculation does not overflow
+
+    /*
+    -> Creates scaling factors for precise division
+    -> Better manage larger numbers
+    */
+    localparam clkTerm = CLKFREQ >> (baudShiftLimiter+1);
+    localparam clkDiv = CLKFREQ >> baudShiftLimiter;
+    localparam baudIncrementer = ((baudRate*oversampling << (accWidth-baudShiftLimiter))+clkTerm) / clkDiv;
+
+
+    logic [accWidth:0] accumulator; //Accumulator - last bit for carry out
+    always_ff @(posedge clk) begin
+        if(enable)
+            accumulator <= accumulator[accWidth-1:0] + baudIncrementer[accWidth:0];
+        else accumulator <= baudIncrementer[accWidth:0];
+    end
+    assign tick = accumulator[accWidth]; //accumulator carry out
 endmodule
