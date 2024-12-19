@@ -115,3 +115,23 @@ Digital Noise Filtering
 		-> Can range from 0-3
 		-> Increments when a signal is consistently high
 		-> Decrements when a signal is consistently low
+
+Baud Generation
+	-> Purpose:
+		-> Generate precise timing ticks for serial communication
+		-> Paramterized to handle different clocks, baud rates, and oversampling
+	-> Implementation:
+		-> Utilizes a linear feedback accumulator
+		-> Shifts the baud rate to match the accumulator width
+		-> Uses scaling factors and number management to prevent overflows and allows for better accuracy
+		-> We furthermore support an oversampled tick as well.
+			-> Which is simply a scale factor to the math for baud rate calculation
+	-> Example:
+		To achieve a closely approximate baud rate of 115200
+		-> We can use an accumulator to track when we should have a 'baud tick' occur.
+		-> For example, with a clk frequency of 2MHz, the ratio for a 115200 baud is 17.356
+		-> or 2M/115200 or 1024/59.
+		-> Using a 10-bit accumulator that increments by 59, we 'tick' when the accumulator
+		-> overflows marking a valid instance of the 115200 baud rate.
+		-> Therefore, the baud tick is the 11th bit of some accuracy register or variable that
+		-> represents the carry-out.
