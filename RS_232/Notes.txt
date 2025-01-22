@@ -135,3 +135,6 @@ Baud Generation
 		-> overflows marking a valid instance of the 115200 baud rate.
 		-> Therefore, the baud tick is the 11th bit of some accuracy register or variable that
 		-> represents the carry-out.
+
+Simulation Debugging:
+	-> Maybe move the tick generators inside the reciever and transmitter modules
