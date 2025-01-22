@@ -20,25 +20,27 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module RS_232 #(parameter CLKFREQ = 25000000, BaudRate = 115200, OverSampling = 8)(
+module RS_232
+    (
     input logic clk,
     input logic RxD,
     input logic [7:0] gpIn, //general purpose input
     output logic TxD,
+    output logic RxD_idle,
+    output logic RxD_packetEnd,
     output logic [7:0] gpOut //general purpose output
     );
     
     logic oversampledTick, tick;
     logic RxD_dataReady;
     logic [7:0] RxD_data;
-    logic RxD_idle, RxD_packetEnd;
     logic TxD_busy;
     
     //Baud generator for transmitter, 115200 bits per second, 1 sample per bit
-    BaudGen #(CLKFREQ, BaudRate, 1) basicTick(.clk(clk), .enable(TxD_busy), .tick(tick));
+    BaudGen #(.CLKFREQ(25000000), .baudRate(115200), .Oversampling(1)) basicTick(.clk(clk), .enable(TxD_busy), .tick(tick));
     
     //Baud generator for reciever, 115200 bits per second, oversampled at default 8 samples per bit
-    BaudGen #(CLKFREQ, BaudRate, OverSampling) sampledTick(.clk(clk), .enable(1'b1), .tick(oversampledTick));
+    BaudGen #(.CLKFREQ(25000000), .baudRate(115200), .Oversampling(8)) sampledTick(.clk(clk), .enable(1'b1), .tick(oversampledTick));
     
     RxD receiver(.clk(clk), .RxD_in(RxD), .oversampledTick(oversampledTick), 
                  .data_ready(RxD_dataReady), .outData(RxD_data), .RxD_idle(RxD_idle),
@@ -47,6 +49,6 @@ module RS_232 #(parameter CLKFREQ = 25000000, BaudRate = 115200, OverSampling = 
     always_ff @(posedge clk)
         if(RxD_dataReady)   gpOut <= RxD_data;
         
-    TxD transmitter(.clk(clk), .BaudTick(tick), .start(RxD_dataReady), .inData(gpIn),
+    TxD transmitter(.clk(clk), .BaudTick(tick), .start(/*RxD_dataReady*/1'b1), .inData(gpIn),
                     .busy(TxD_busy), .txd_out(TxD));
 endmodule
