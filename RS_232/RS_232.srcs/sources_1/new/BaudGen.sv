@@ -32,7 +32,21 @@ To achieve a closely approximate baud rate of 115200
 The following module follows this reasoning but with some mathematical improvements
 -> to improve accuracy and support an oversampling tick feature which functions simply as a scale factor without much changing the accumulator logic
 */
-module BaudGen #(parameter CLKFREQ = 25000000, baudRate = 115200, oversampling = 1)
+//quick tb for baud gen
+module baud_TB();
+    logic clk, tick;
+    always begin
+        clk <= 1; #20; clk <= 0; #20;
+    end
+    BaudGen dut(.clk(clk), .enable(1'b1), .tick(tick));
+    initial begin
+        repeat(5) begin
+            @(posedge tick);
+        end
+        $stop;
+    end
+endmodule
+module BaudGen #(parameter CLKFREQ = 25000000, baudRate = 115200, Oversampling = 1)
     (
     input logic clk,
     input logic enable,
@@ -52,7 +66,7 @@ module BaudGen #(parameter CLKFREQ = 25000000, baudRate = 115200, oversampling =
     // +/- 2% timing error over a byte
     // -> by adding extra bits for timing error tolerance
     localparam accWidth = log2(CLKFREQ/baudRate)+8;
-    localparam baudShiftLimiter = log2(baudRate*oversampling >> (31-accWidth)); //makes sure incremented calculation does not overflow
+    localparam baudShiftLimiter = log2(baudRate*Oversampling >> (31-accWidth)); //makes sure incremented calculation does not overflow
 
     /*
     -> Creates scaling factors for precise division
@@ -60,10 +74,15 @@ module BaudGen #(parameter CLKFREQ = 25000000, baudRate = 115200, oversampling =
     */
     localparam clkTerm = CLKFREQ >> (baudShiftLimiter+1);
     localparam clkDiv = CLKFREQ >> baudShiftLimiter;
-    localparam baudIncrementer = ((baudRate*oversampling << (accWidth-baudShiftLimiter))+clkTerm) / clkDiv;
+    localparam baudIncrementer = ((baudRate*Oversampling << (accWidth-baudShiftLimiter))+clkTerm) / clkDiv;
 
 
     logic [accWidth:0] accumulator; //Accumulator - last bit for carry out
+    initial begin
+        for(int i = 0; i < accWidth; i++) begin
+            accumulator[i] = 1'b0;
+        end
+    end
     always_ff @(posedge clk) begin
         if(enable)
             accumulator <= accumulator[accWidth-1:0] + baudIncrementer[accWidth:0];
